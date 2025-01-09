@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Gadget\OAuth\Token;
 
+use Firebase\JWT\CachedKeySet;
+use Firebase\JWT\JWT;
 use Gadget\Lang\Cast;
 use Gadget\OAuth\Request\AuthRequestInterface;
 use Gadget\OAuth\Response\AuthResponseInterface;
 use Gadget\OAuth\Server\AuthServerInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 
@@ -16,10 +19,12 @@ class TokenFactory implements TokenFactoryInterface
     /**
      * @param ClientInterface $client
      * @param RequestFactoryInterface $requestFactory
+     * @param CacheItemPoolInterface $cache
      */
     public function __construct(
         private ClientInterface $client,
-        private RequestFactoryInterface $requestFactory
+        private RequestFactoryInterface $requestFactory,
+        private CacheItemPoolInterface $cache
     ) {
     }
 
@@ -76,14 +81,17 @@ class TokenFactory implements TokenFactoryInterface
                 scope: $authRequest->getScope(),
                 expiresIn: $authResponse->getExpiresIn(),
                 accessToken: $authResponse->getAccessToken(),
-                idToken: $authResponse->getIdToken(),
+                idToken: $this->createIdToken(
+                    $authRequest->getAuthServer(),
+                    $authResponse->getIdToken()
+                ),
                 refreshToken: null,
             ),
 
             'code',
             'code id_token',
             'code token',
-            'code id_token token' => $this->invoke($authRequest->getAuthServer()->getTokenUri(), [
+            'code id_token token' => $this->invoke($authRequest->getAuthServer(), [
                 'grant_type' => 'authorization_code',
                 'code' => $authResponse->getCode(),
                 'redirect_uri' => $authRequest->getRedirectUri(),
@@ -109,7 +117,7 @@ class TokenFactory implements TokenFactoryInterface
         TokenInterface $token
     ): TokenInterface {
         return $token->getRefreshToken() !== null
-            ? $this->invoke($authServer->getTokenUri(), [
+            ? $this->invoke($authServer, [
                 'grant_type' => 'refresh_token',
                 'refresh_token' => $token->getRefreshToken(),
                 'client_id' => $authServer->getClientId(),
@@ -120,16 +128,16 @@ class TokenFactory implements TokenFactoryInterface
 
 
     /**
-     * @param string $tokenUri
+     * @param AuthServerInterface $authServer
      * @param mixed[] $params
      * @return Token
      */
     private function invoke(
-        string $tokenUri,
+        AuthServerInterface $authServer,
         array $params
     ): Token {
         $request = $this->requestFactory
-            ->createRequest('POST', $tokenUri)
+            ->createRequest('POST', $authServer->getTokenUri())
             ->withHeader('Content-Type', 'application/x-www-form-urlencoded');
 
         $request
@@ -153,8 +161,42 @@ class TokenFactory implements TokenFactoryInterface
             scope: $cast->toStringOrNull($values['scope'] ?? null),
             expiresIn: $cast->toIntOrNull($values['expires_in'] ?? null),
             accessToken: $cast->toStringOrNull($values['access_token'] ?? null),
-            idToken: $cast->toStringOrNull($values['id_token'] ?? null),
+            idToken: $this->createIdToken(
+                $authServer,
+                $cast->toStringOrNull($values['id_token'] ?? null)
+            ),
             refreshToken: $cast->toStringOrNull($values['refresh_token'] ?? null),
+        );
+    }
+
+
+    /**
+     * @param AuthServerInterface $authServer
+     * @param string|null $idToken
+     * @return IdTokenInterface
+     */
+    private function createIdToken(
+        AuthServerInterface $authServer,
+        string|null $idToken
+    ): IdTokenInterface|null {
+        if ($idToken === null) {
+            return null;
+        }
+
+        $jwks = new CachedKeySet(
+            $authServer->getJwksUri(),
+            $this->client,
+            $this->requestFactory,
+            $this->cache,
+            null,
+            false,
+            'RS256'
+        );
+
+        JWT::$leeway = 30;
+        return new IdToken(
+            $idToken,
+            (new Cast())->toArray(JWT::decode($idToken, $jwks))
         );
     }
 }

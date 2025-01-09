@@ -16,6 +16,7 @@
   },
   "require": {
     "php": "^8.1",
+    "firebase/php-jwt": "^6.10",
     "gadgetphp/contracts": "dev-main",
     "gadgetphp/lang": "dev-main"
   },

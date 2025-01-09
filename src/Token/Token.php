@@ -11,7 +11,7 @@ class Token implements TokenInterface
      * @param string|null $scope
      * @param int|null $expiresIn
      * @param string|null $accessToken
-     * @param string|null $idToken
+     * @param IdTokenInterface|null $idToken
      * @param string|null $refreshToken
      * @return void
      */
@@ -20,7 +20,7 @@ class Token implements TokenInterface
         private string|null $scope = null,
         private int|null $expiresIn = null,
         private string|null $accessToken = null,
-        private string|null $idToken = null,
+        private IdTokenInterface|null $idToken = null,
         private string|null $refreshToken = null
     ) {
     }
@@ -36,9 +36,9 @@ class Token implements TokenInterface
 
 
     /**
-     * @return string|null
+     * @return IdTokenInterface|null
      */
-    public function getIdToken(): string|null
+    public function getIdToken(): IdTokenInterface|null
     {
         return $this->idToken;
     }
