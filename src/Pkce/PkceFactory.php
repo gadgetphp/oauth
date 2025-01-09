@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Gadget\OAuth\Factory;
+namespace Gadget\OAuth\Pkce;
 
 use Gadget\Lang\Cast;
-use Gadget\OAuth\Entity\Pkce;
-use Gadget\OAuth\Entity\PkceInterface;
 
 class PkceFactory implements PkceFactoryInterface
 {

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Gadget\OAuth\Factory;
+namespace Gadget\OAuth\Request;
 
 use Gadget\Lang\Cast;
-use Gadget\OAuth\Entity\AuthRequest;
-use Gadget\OAuth\Entity\AuthRequestInterface;
-use Gadget\OAuth\Entity\AuthServerInterface;
-use Gadget\OAuth\Entity\PkceInterface;
+use Gadget\OAuth\Pkce\PkceFactoryInterface;
+use Gadget\OAuth\Pkce\PkceInterface;
+use Gadget\OAuth\Server\AuthServerFactoryInterface;
+use Gadget\OAuth\Server\AuthServerInterface;
 
 class AuthRequestFactory implements AuthRequestFactoryInterface
 {
@@ -42,28 +42,23 @@ class AuthRequestFactory implements AuthRequestFactoryInterface
         $cast = new Cast();
         $values = $cast->toArray($values);
 
-        $authServer = $values['authServer'] ?? null;
-        $authServer = $authServer instanceof AuthServerInterface
-            ? $authServer
-            : $this->authServerFactory->create($authServer);
+        $responseType = $cast->toString($values['response_type'] ?? 'code');
+        $authServer = $this->authServerFactory->createAuthServer($cast->toStringOrNull($values['auth_uri'] ?? null));
+        $pkce = isset($values['code_challenge_method'])
+            ? $this->pkceFactory->createPkce($cast->toString($values['code_challenge_method']))
+            : null;
 
-        $pkce = $values['pkce'] ?? null;
-        $pkce = match (true) {
-            $pkce instanceof PkceInterface => $pkce,
-            $pkce === null => null,
-            default => $this->pkceFactory->create($pkce)
-        };
-
-        return !isset($values['responseMode'])
-            ? $this->createOAuthRequest(
+        return $responseType === 'code'
+            ? $this->createAuthCodeRequest(
                 $authServer,
-                $cast->toStringOrNull($values['redirectUri'] ?? null),
+                $cast->toStringOrNull($values['redirect_uri'] ?? null),
                 $cast->toStringOrNull($values['scope'] ?? null),
                 $cast->toStringOrNull($values['state'] ?? null),
                 $pkce,
             )
-            : $this->createOIDCRequest(
+            : $this->createImplicitFlowRequest(
                 $authServer,
+                $responseType,
                 $cast->toStringOrNull($values['redirectUri'] ?? null),
                 $cast->toStringOrNull($values['scope'] ?? null),
                 $cast->toStringOrNull($values['state'] ?? null),
@@ -89,14 +84,14 @@ class AuthRequestFactory implements AuthRequestFactoryInterface
      *
      * @return AuthRequestInterface
      */
-    public function createOAuthRequest(
+    public function createAuthCodeRequest(
         AuthServerInterface|null $authServer = null,
         string|null $redirectUri = null,
         string|null $scope = null,
         string|null $state = null,
         PkceInterface|null $pkce = null
     ): AuthRequestInterface {
-        return new AuthRequest(
+        return new AuthCodeRequest(
             $authServer ?? $this->authServerFactory->createAuthServer(),
             $redirectUri ?? $this->redirectUri,
             $scope ?? $this->scope,
@@ -108,6 +103,7 @@ class AuthRequestFactory implements AuthRequestFactoryInterface
 
     /**
      * @param AuthServerInterface|null $authServer
+     * @param string $responseType
      * @param string|null $redirectUri
      * @param string|null $scope
      * @param string|null $state
@@ -123,8 +119,9 @@ class AuthRequestFactory implements AuthRequestFactoryInterface
      *
      * @return AuthRequestInterface
      */
-    public function createOIDCRequest(
+    public function createImplicitFlowRequest(
         AuthServerInterface|null $authServer = null,
+        string $responseType = 'id_token',
         string|null $redirectUri = null,
         string|null $scope = null,
         string|null $state = null,
@@ -138,14 +135,15 @@ class AuthRequestFactory implements AuthRequestFactoryInterface
         string|null $idTokenHint = null,
         string|null $loginTokenHint = null
     ): AuthRequestInterface {
-        return new AuthRequest(
+        return new ImplicitFlowRequest(
             $authServer ?? $this->authServerFactory->createAuthServer(),
+            $responseType,
             $redirectUri ?? $this->redirectUri,
             $scope ?? $this->scope,
             $state ?? bin2hex(random_bytes(32)),
+            $nonce ?? bin2hex(random_bytes(32)),
             $pkce,
             $responseMode ?? $this->responseMode,
-            $nonce ?? bin2hex(random_bytes(32)),
             $display ?? $this->display,
             $prompt ?? $this->prompt,
             $maxAge,

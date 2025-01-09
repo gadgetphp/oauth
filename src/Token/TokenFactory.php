@@ -2,14 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Gadget\OAuth\Factory;
+namespace Gadget\OAuth\Token;
 
 use Gadget\Lang\Cast;
-use Gadget\OAuth\Entity\AuthRequestInterface;
-use Gadget\OAuth\Entity\AuthResponseInterface;
-use Gadget\OAuth\Entity\AuthServerInterface;
-use Gadget\OAuth\Entity\Token;
-use Gadget\OAuth\Entity\TokenInterface;
+use Gadget\OAuth\Request\AuthRequestInterface;
+use Gadget\OAuth\Response\AuthResponseInterface;
+use Gadget\OAuth\Server\AuthServerInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 
@@ -66,21 +64,38 @@ class TokenFactory implements TokenFactoryInterface
         if ($authRequest->getState() !== $authResponse->getState()) {
             throw new \RuntimeException();
         }
+
         if ($authResponse->getError() !== null) {
             throw new \RuntimeException($authResponse->getError());
         }
 
-        return $this->invoke(
-            $authRequest->getAuthServer()->getTokenUri(),
-            [
+        $token = match ($authRequest->getResponseType()) {
+            'id_token',
+            'id_token token' => new Token(
+                tokenType: $authResponse->getTokenType() ?? 'Bearer',
+                scope: $authRequest->getScope(),
+                expiresIn: $authResponse->getExpiresIn(),
+                accessToken: $authResponse->getAccessToken(),
+                idToken: $authResponse->getIdToken(),
+                refreshToken: null,
+            ),
+
+            'code',
+            'code id_token',
+            'code token',
+            'code id_token token' => $this->invoke($authRequest->getAuthServer()->getTokenUri(), [
                 'grant_type' => 'authorization_code',
                 'code' => $authResponse->getCode(),
                 'redirect_uri' => $authRequest->getRedirectUri(),
                 'client_id' => $authRequest->getAuthServer()->getClientId(),
                 'client_secret' => $authRequest->getAuthServer()->getClientSecret(),
                 'code_verifier' => $authRequest->getPkce()?->getCodeVerifier()
-            ]
-        );
+            ]),
+
+            default => throw new \RuntimeException()
+        };
+
+        return $token;
     }
 
 
@@ -93,19 +108,14 @@ class TokenFactory implements TokenFactoryInterface
         AuthServerInterface $authServer,
         TokenInterface $token
     ): TokenInterface {
-        if ($token->getRefreshToken() === null) {
-            throw new \RuntimeException();
-        }
-
-        return $this->invoke(
-            $authServer->getTokenUri(),
-            [
+        return $token->getRefreshToken() !== null
+            ? $this->invoke($authServer->getTokenUri(), [
                 'grant_type' => 'refresh_token',
                 'refresh_token' => $token->getRefreshToken(),
                 'client_id' => $authServer->getClientId(),
                 'client_secret' => $authServer->getClientSecret()
-            ]
-        );
+            ])
+            : throw new \RuntimeException();
     }
 
 

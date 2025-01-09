@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Gadget\OAuth\Entity;
+namespace Gadget\OAuth\Pkce;
 
 class Pkce implements PkceInterface
 {

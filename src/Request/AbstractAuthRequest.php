@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Gadget\OAuth\Entity;
+namespace Gadget\OAuth\Request;
 
-class AuthRequest implements AuthRequestInterface
+use Gadget\OAuth\Pkce\PkceInterface;
+use Gadget\OAuth\Server\AuthServerInterface;
+
+abstract class AbstractAuthRequest implements AuthRequestInterface
 {
     /**
      * @param AuthServerInterface $authServer
+     * @param string $responseType
      * @param string $redirectUri
      * @param string|null $scope
      * @param string $state
@@ -23,6 +27,7 @@ class AuthRequest implements AuthRequestInterface
      */
     public function __construct(
         private AuthServerInterface $authServer,
+        private string $responseType,
         private string $redirectUri,
         private string|null $scope,
         private string $state,
@@ -53,7 +58,7 @@ class AuthRequest implements AuthRequestInterface
      */
     public function getResponseType(): string
     {
-        return 'code';
+        return $this->responseType;
     }
 
 
@@ -170,24 +175,21 @@ class AuthRequest implements AuthRequestInterface
      */
     public function getUri(): string
     {
-        return sprintf(
-            "%s?%s",
-            $this->getAuthServer()->getAuthUri(),
-            http_build_query([
-                'redirect_uri' => $this->getRedirectUri(),
-                'scope' => $this->getScope(),
-                'state' => $this->getState(),
-                'code_challenge' => $this->getPkce()?->getCodeChallenge() ?? null,
-                'code_challenge_method' => $this->getPkce()?->getCodeChallengeMethod() ?? null,
-                'response_mode' => $this->getResponseMode(),
-                'nonce' => $this->getNonce(),
-                'display' => $this->getDisplay(),
-                'prompt' => $this->getPrompt(),
-                'max_age' => $this->getMaxAge(),
-                'ui_locales' => $this->getUiLocales(),
-                'id_token_hint' => $this->getIdTokenHint(),
-                'login_token_hint' => $this->getLoginTokenHint()
-            ], "", null, PHP_QUERY_RFC3986)
-        );
+        return sprintf("%s?%s", $this->getAuthServer()->getAuthUri(), http_build_query([
+            'response_type' => $this->getResponseType(),
+            'redirect_uri' => $this->getRedirectUri(),
+            'scope' => $this->getScope(),
+            'state' => $this->getState(),
+            'code_challenge' => $this->getPkce()?->getCodeChallenge() ?? null,
+            'code_challenge_method' => $this->getPkce()?->getCodeChallengeMethod() ?? null,
+            'response_mode' => $this->getResponseMode(),
+            'nonce' => $this->getNonce(),
+            'display' => $this->getDisplay(),
+            'prompt' => $this->getPrompt(),
+            'max_age' => $this->getMaxAge(),
+            'ui_locales' => $this->getUiLocales(),
+            'id_token_hint' => $this->getIdTokenHint(),
+            'login_token_hint' => $this->getLoginTokenHint()
+        ], "", null, PHP_QUERY_RFC3986));
     }
 }
